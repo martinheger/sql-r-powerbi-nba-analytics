@@ -1,0 +1,555 @@
+---
+title: "Analýza herních dat NBA sezóny 2023/24"
+author: "Martin Heger"
+output:
+  html_document:
+    code_folding: "hide"  
+    toc: true 
+    toc_depth: 3  
+editor_options:
+  markdown:
+    wrap: 72
+runtime: shiny
+---
+
+# Úvod
+
+Tento dokument analyzuje data ze sezóny NBA a zaměřuje se na rozdíly ve
+skóre mezi domácími a hostujícími týmy, celkový počet výher týmu a
+statistiky jednotlivých hráčů.
+
+# Připojení k databázy
+
+```{r ,message=FALSE, warning=FALSE}
+# Načtení knihoven
+library(DBI)
+library(odbc)
+library(dplyr)
+library(dbplyr)
+library(ggplot2)
+library(kableExtra)
+library(shiny)
+library(lubridate)
+library(tidyr)
+library(forcats)
+library(stringr)
+
+
+
+
+
+# Připojení k databázi
+con <- dbConnect(odbc::odbc(),
+                 Driver = "SQL Server",
+                 Server = "LAPTOP-STOB8T44\\SQLEXPRESS",
+                 Database = "mahe_projekt_NBA")
+
+```
+
+```{r setup, include=FALSE}
+start_time <- Sys.time()
+```
+
+### Načtení dat
+
+Zde využíváme funkci **dbGetQuery** pro provedení dotazu a načtení
+výsledku do R, a následně s nimi pracujeme již v R. Druhou možností je
+použití **dbReadTable**, která načte do R celou tabulku. Zvolili jsme
+první možnost, protože je jednodušší poté změnit, které sloupce nám
+například do R stačí načíst, když nechceme všechny. Třetí možností je
+knihovna **dbplyr** a příkaz **tbl** – data se nenačítají celá do R
+paměti, ale místo toho **dbplyr** generuje SQL dotazy, které se
+provádějí přímo na serveru. Při menších datech nevzniká s našim postupem
+problém. Při větších datech může být výhodnější používat **dbplyr**, na
+druhou stranu však automatické překládání na dotaz do SQL může přinášet
+při složitějších konstrukcích problémy.
+
+```{r ,message=FALSE, warning=FALSE}
+
+# Načtení všech tabulek
+nba_zapasy      <- dbGetQuery(con, "SELECT * FROM nba_zapasy")
+nba_sezona_hraci <- dbGetQuery(con, "SELECT * FROM nba_sezona_hraci")
+nba_hraci       <- dbGetQuery(con, "SELECT * FROM nba_hraci")
+nba_tymy        <- dbGetQuery(con, "SELECT * FROM nba_tymy")
+nba_draft       <- dbGetQuery(con, "SELECT * FROM nba_draft")
+nba_divize      <- dbGetQuery(con, "SELECT * FROM nba_divize")
+nba_konference  <- dbGetQuery(con, "SELECT * FROM nba_konference")
+
+# Odpojení od DB
+dbDisconnect(con)
+
+# Výpis struktur 
+#str(nba_zapasy)
+#str(nba_sezona_hraci)
+#str(nba_hraci)
+#str(nba_tymy)
+#str(nba_draft)
+#str(nba_divize)
+#str(nba_konference)
+
+
+
+```
+
+# Začínáme s analýzou
+
+## Týmové statistiky
+
+Nejprve se budeme zabývat statistikami týmů a zápasů mezi nimi.
+
+### Histogram rozdílů skóre
+
+Nejprve získáme rozdíl skóre mezi domácím a hostujícím týmem. Použijeme
+**absolutní hodnotu**, protože nám nezáleží na tom, kdo vyhrál, pouze na
+velikosti rozdílu ve skóre. Rozdíly jsou **rozděleny do kategorií**,
+abychom mohli lépe porozumět tomu, jak těsné byly zápasy v jednotlivých
+rozmezích.
+
+```{r ,message=FALSE, warning=FALSE}
+
+# Kategorie rozdílů skore po dvou bodech a nadkategorie po 6 bodech
+nba_zapasy <- nba_zapasy %>%
+  mutate(diference_skore = abs(domaci_skore - hoste_skore)) %>%
+  filter(diference_skore > 0) %>%
+  mutate(
+    kategorie = case_when(
+      diference_skore <= 2   ~ "1-2",  diference_skore <= 4   ~ "3-4",
+      diference_skore <= 6   ~ "5-6",  diference_skore <= 8   ~ "7-8",
+      diference_skore <= 10  ~ "9-10", diference_skore <= 12  ~ "11-12",
+      diference_skore <= 14  ~ "13-14",diference_skore <= 16  ~ "15-16",
+      diference_skore <= 18  ~ "17-18",diference_skore <= 20  ~ "19-20",
+      diference_skore <= 22  ~ "21-22",diference_skore <= 24  ~ "23-24",
+      diference_skore <= 26  ~ "25-26",diference_skore <= 28  ~ "27-28",
+      diference_skore <= 30  ~ "29-30",TRUE                   ~ "31+"
+    ),
+    nadkategorie = case_when(
+      diference_skore <= 6   ~ "1-6 bodů",  diference_skore <= 12  ~ "7-12 bodů",
+      diference_skore <= 18  ~ "13-18 bodů",diference_skore <= 24  ~ "19-24 bodů",
+      diference_skore <= 30  ~ "25-30 bodů",TRUE                   ~ "31+ bodů"
+    )
+  )
+
+
+# Pořadí kategorií (pro grafy a legendy) neboť kategroie a nadkategorie jsou vytvořené jako textové řetězce a R je defaultně v grafech řadí alfabeticky
+nba_zapasy$kategorie <- factor(nba_zapasy$kategorie,
+                               levels = c("1-2", "3-4", "5-6", "7-8", 
+                                           "9-10", "11-12", "13-14", "15-16", 
+                                           "17-18", "19-20", "21-22", "23-24", 
+                                           "25-26", "27-28", "29-30", "31+"))
+
+nba_zapasy$nadkategorie <- factor(nba_zapasy$nadkategorie,
+                                  levels = c("1-6 bodů", "7-12 bodů", "13-18 bodů","19-24 bodů", "25-30 bodů", "31+ bodů"))
+
+# Součty podle kategorie a nadkategorie
+soucty <- nba_zapasy %>%
+  count(kategorie,nadkategorie) 
+  
+
+soucty1 <- nba_zapasy %>%
+  count(kategorie,nadkategorie) %>% 
+  group_by(nadkategorie) %>%          
+  summarise(pocet_zapasu = sum(n)) %>% 
+  ungroup()                          
+
+# Barevné přechody mezi nadkategoriemi
+barvy <- c("1-6 bodů" = "#2ECC71",     # zelená
+           "7-12 bodů" = "#F1C40F",    # žlutá
+           "13-18 bodů" = "#E67E22",   # oranžová
+           "19-24 bodů" = "#F39C12",   # tmavší žlutá
+           "25-30 bodů" = "#E74C3C",   # červená
+           "31+ bodů" = "#9B59B6")     # fialová
+
+# Histogram
+ggplot(soucty, aes(x = kategorie, y = n, fill = nadkategorie)) +
+  geom_bar(stat = "identity", color = "black") +
+  scale_fill_manual(values = barvy, 
+                    name = "Rozmezí rozdílů",
+                    labels = paste(levels(soucty$nadkategorie), 
+                                   "(", soucty1$pocet_zapasu, " zápasů)", sep = "")) +
+  scale_y_continuous(
+    breaks = seq(0, max(soucty$n) + 10, by = 10),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Histogram rozdílů skóre v zápasech NBA",
+    x = "Rozdíl ve skóre",
+    y = "Počet zápasů"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",     
+    axis.text.x = element_text(angle = 45, hjust = 1)  
+  )
+  
+```
+
+### Vykreslení boxplotu s popisky
+
+Nyní ještě vykreslíme boxplot, pro lepší vizualizaci **mediánu**,
+**interkvartilového rozpětí** a **intervalu spolehlivosti**. Při tvorbě
+se objevil problém spojený právě s databází. Díky vykreslení odlehlých
+zápasů jsme si všimli, že se zobrazuje rozdíl mezi skóre týmu více než
+100. Po prozkoumání dat v databázi se našel problém. Špatná hodnota v
+jednom jediném zápasu. **POZOR** na zdroje a integritu dat!
+
+```{r ,message=FALSE, warning=FALSE}
+# Vykreslení boxplotu s popisky
+boxplot(nba_zapasy$diference_skore,
+        main = "Boxplot rozdílů skóre v NBA zápasech",
+        xlab = "Rozdíl skóre (body)",
+        col = "skyblue",
+        border = "darkblue",
+        notch = TRUE,        # zářez ukazuje konfidenční interval mediánu
+        horizontal = TRUE,   # boxplot bude vodorovný
+        outline = TRUE)      # zobrazí i odlehlé body
+grid(nx = NA, ny = NULL, col = "lightgray", lty = "dotted")
+legend("topright",
+       legend = c("Krabice = 1. až 3. kvartil", 
+                  "Čára = medián", 
+                  "Zářezy = přibližně zobrazují interval spolehlivosti mediánu", 
+                  "Tečky = odlehlé zápasy"),
+       bty = "n",            # Bez rámečku okolo legendy
+       cex = 0.8,            # Velikost textu
+       text.col = "black")   # Barva textu legendy
+
+```
+
+### Heatmapa
+
+Heatmapa skóre domácích týmů podle měsíců. Heatmapa vizualizuje průměrné
+skóre jednotlivých domácích týmů v průběhu sezóny. Umožňuje rychle
+odhalit výkonnostní výkyvy mezi měsíci.
+
+```{r ,message=FALSE, warning=FALSE}
+
+# Spojení s tabulkou nba_tymy a výpočet průměrů
+heatmapa_data <- nba_zapasy %>%
+  mutate(mesic = format(as.Date(datum), "%Y-%m")) %>%
+  group_by(id_tym_domaci, mesic) %>%
+  summarise(prumer_bodu = mean(domaci_skore), .groups = "drop") %>%
+  left_join(nba_tymy, by = c("id_tym_domaci" = "tym_id"))  # spojení pro název týmu
+
+# Vykreslení heatmapy
+ggplot(heatmapa_data, aes(x = mesic, y = nazev, fill = prumer_bodu)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "lightyellow", high = "red") +
+  labs(
+    title = "Heatmapa skóre domácích týmů podle měsíců",
+    x = "Měsíc", y = "Domácí tým", fill = "Průměr bodů"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+### Vývoj průměrných bodů v zápasech po týdnech v čase
+
+Nyní se podíváme na průměrné body v zápasech po jednotlivých hracích
+týdnech. Budeme pozorovat jak se v čase mění ofenzivní nasazení týmů v
+lize a pokusíme se výsledný graf proložit spojitou křivkou.
+
+```{r ,message=FALSE, warning=FALSE}
+
+# Vytvoření týdenních dat
+skore_v_case <- nba_zapasy %>%
+  mutate(tyden = floor_date(as.Date(datum), "week")) %>%
+  group_by(tyden) %>%
+  summarise(prumer_skore = mean(domaci_skore + hoste_skore))
+
+# GRAF
+ggplot(skore_v_case, aes(x = tyden, y = prumer_skore)) +
+  geom_line(color = "steelblue", size = 1.2) +
+  
+  # Proložení LOESS
+  geom_smooth(aes(color = "LOESS"), method = "loess", se = FALSE, size = 1.2) +
+  
+  # Proložení polynomem 3. stupně
+  geom_smooth(aes(color = "Polynom 3. stupně"),
+              method = "lm", formula = y ~ poly(x, 3),
+              se = FALSE, size = 1.2, linetype = "dashed") +
+  
+  scale_color_manual(values = c("LOESS" = "darkred", "Polynom 3. stupně" = "forestgreen")) +
+  
+  labs(
+    title = "Vývoj průměrného skóre v NBA během sezóny (týdně)",
+    x = "Týden", y = "Průměrné skóre", color = "Metoda proložení"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+# -----ALTERNATIVY-----
+
+# geom_smooth(method = "loess"):
+# + Výhody: nelineární, dobře zachycuje lokální trendy, žádná nutnost volby modelu
+# - Nevýhody: pomalejší pro velká data, může přepasovat (overfitting)
+
+# geom_smooth(method = "lm", formula = y ~ poly(x, 3)):
+# + Výhody: jednoduchý globální model, dobře čitelný
+# - Nevýhody: náchylný k pod/přepasování, pokud zvolen špatný stupeň
+
+# Další možné metody:
+# - method = "gam" (Generalized Additive Models): flexibilní jako LOESS, ale lépe škáluje
+
+```
+
+### Koláčový graf výher týmů
+
+Nyní zobrazíme **koláčové grafy** poddílů výher týmů ve všech 6
+divizích. Zde se vyskytoval problém se spojováním mnoha záznamů a celý R
+Markdown dokument se následně r**enderoval déle, než bylo vhodné.** V
+tomto případě však při prozkoumání **nebyl problém z pamětí v R.** Je
+však třeba brát na paměť, že náš způsob někdy může být kamenem úrazu.
+
+```{r ,message=FALSE, warning=FALSE}
+
+
+# Spočítání výher pro týmy v zápasech
+nba_vitezstvi <- nba_zapasy %>%
+  mutate(vitez_id = ifelse(domaci_skore > hoste_skore, id_tym_domaci, id_tym_hoste)) %>%
+  count(vitez_id, name = "vitezstvi")
+
+# Spojení informací o týmech (divize, konference)
+info_tymy <- nba_tymy %>%
+  left_join(nba_divize, by = "divize_id") %>%
+  left_join(nba_konference, by = "konference_id") %>%
+  select(tym_id = tym_id, tym = zkratka.x, divize = nazev.y, konference = zkratka)
+
+# Spojení s výhrami
+nba_prehled <- info_tymy %>%
+  left_join(nba_vitezstvi, by = c("tym_id" = "vitez_id")) %>%
+  mutate(vitezstvi = replace_na(vitezstvi, 0)) %>%
+  select(tym_id, tym, divize, konference, vitezstvi) %>%
+  arrange(divize, desc(vitezstvi))  # Seřazení podle divize a výher
+
+# Spočítání procent výher v rámci divize
+nba_prehled_procent <- nba_prehled %>%
+  group_by(divize) %>%
+  mutate(podil = vitezstvi / sum(vitezstvi)) %>%
+  ungroup()
+nba_prehled_procent
+
+# Vytvoření barevné palety
+colors <- c(
+  "darkblue", "blue", "lightblue", "dodgerblue", "royalblue", "skyblue", "deepskyblue", "cornflowerblue", "steelblue", "mediumblue", 
+  "darkcyan", "seagreen", "forestgreen", "darkgreen", "mediumseagreen",
+  "darkred", "firebrick", "#DC143C", "red", "tomato", "orangered", "darkorange", "orange", "gold", "yellow", 
+  "lightyellow", "khaki", "yellowgreen", "#808000", "goldenrod"
+)
+
+# Uspořádání týmů podle pořadí v rámci divizí a výher
+nba_prehled_procent <- nba_prehled_procent %>%
+  arrange(divize, desc(vitezstvi)) %>%
+  mutate(tym = factor(tym, levels = unique(tym)))
+
+# Přiřazení barev podle pořadí týmů
+nba_prehled_procent$barva <- colors[1:length(levels(nba_prehled_procent$tym))]
+
+# Východní konference
+divize_1 <- unique(nba_prehled_procent$divize)[1:3] 
+
+nba_cast1 <- nba_prehled_procent %>%
+  filter(divize %in% divize_1)
+
+ggplot(nba_cast1, aes(x = "", y = podil, fill = tym)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  facet_wrap(~ divize) +
+  labs(title = "Podíl výher týmů (první 3 divize)") +
+  theme_void() +
+  theme(legend.position = "right") +
+  scale_fill_manual(values = setNames(nba_cast1$barva, nba_cast1$tym)) +
+  guides(fill = guide_legend(title = "Týmy", ncol = 3))
+
+# Západní konference
+divize_2 <- unique(nba_prehled_procent$divize)[4:6] 
+
+nba_cast2 <- nba_prehled_procent %>%
+  filter(divize %in% divize_2)
+
+ggplot(nba_cast2, aes(x = "", y = podil, fill = tym)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  facet_wrap(~ divize) +
+  labs(title = "Podíl výher týmů (další 3 divize)") +
+  theme_void() +
+  theme(legend.position = "right") +
+  scale_fill_manual(values = setNames(nba_cast2$barva, nba_cast2$tym)) +
+  guides(fill = guide_legend(title = "Týmy", ncol = 3))
+```
+
+## Interaktivní zobrazení statistik hráčů
+
+Nyní se zaměříme na individuální výkony hráčů zobrazíme si tabulkově
+nejlepší hráče dle bodů v lize. Dále spočítáme ligové průměry některých
+statistik jako jsou body atp. Na závěr uděláme interaktivní vizualizaci,
+kdy si čtenář bude moct vybrat hráče, zobrazit jeho statistiky a
+porovnat je s ligovými průměry. Zde opět upozorňujeme na zdroj a formát
+dat, autor více rozebere na místě při prezentaci projektu.
+
+```{r ,message=FALSE, warning=FALSE}
+
+# Získání názvů týmů, za které hráč hrál
+tymy_hracu <- nba_sezona_hraci %>%
+  left_join(nba_tymy, by = "tym_id") %>%
+  group_by(hrac_id) %>%
+  summarise(
+    tymy = paste(unique(zkratka), collapse = ", ")
+  )
+
+
+# Spojení statistik a týmů, KVULI forme dat a ulozeni v databazy nelze například použít mean(více se o tomto rozpovídám na prezentaci)
+statistiky_hracu <- nba_sezona_hraci %>%
+  group_by(hrac_id) %>%
+  summarise(
+    pocet_zapasu = sum(G), 
+    pocet_zapasu_z5 = sum(GS),
+    celkem_body = sum(PTS * G, na.rm = TRUE),  
+    prumer_body_na_zapas = sum(PTS * G, na.rm = TRUE) / sum(G, na.rm = TRUE),  
+    celkem_doskoky = sum(TRB * G, na.rm = TRUE),  
+    prumer_doskoky_na_zapas = sum(TRB * G, na.rm = TRUE) / sum(G, na.rm = TRUE),
+    celkem_asistence = sum(AST * G, na.rm = TRUE),  
+    prumer_asistence_na_zapas = sum(AST * G, na.rm = TRUE) / sum(G, na.rm = TRUE),
+    efektivita_strelby = round(sum(eFG * G, na.rm = TRUE) / sum(G, na.rm = TRUE), 2),  
+    prumer_minut = round(sum(MP * G, na.rm = TRUE) / sum(G, na.rm = TRUE), 2)
+  ) %>%
+  left_join(nba_hraci, by = "hrac_id") %>%
+  left_join(tymy_hracu, by = "hrac_id") %>%
+  arrange(desc(prumer_body_na_zapas))
+
+
+# Výpis top 10 hráčů s názvem týmu
+top_10_hracu_body <- statistiky_hracu %>%
+  select(jmeno_hrace, prumer_body_na_zapas, celkem_body, pocet_zapasu, tymy) %>%  
+  head(10)
+
+  
+ligovy_prumer_body <- mean(statistiky_hracu$prumer_body_na_zapas, na.rm = TRUE)
+    ligovy_prumer_doskoky <- mean(statistiky_hracu$prumer_doskoky_na_zapas, na.rm = TRUE)
+    ligovy_prumer_asistence <- mean(statistiky_hracu$prumer_asistence_na_zapas, na.rm = TRUE)
+    
+   
+# Tabulka top 10 hráčů podle průměrných bodů
+top_10_hracu_body %>%
+  kable("html", col.names = c("Hráč", "Průměr bodů na zápas", "Celkem bodů", "Počet zápasů", "Týmy")) %>%
+  kable_styling("striped", full_width = F) %>%
+  column_spec(1, bold = TRUE, color = "blue") %>%
+  column_spec(2:5, color = "darkgreen") %>%
+  row_spec(0, bold = TRUE, background = "#f7f7f7")
+
+# Tabulka pro ligové průměry
+data.frame(
+  Statistika = c("Průměr bodů", "Průměr doskoků", "Průměr asistencí"),
+  Hodnota = c(round(ligovy_prumer_body, 1), round(ligovy_prumer_doskoky, 1), round(ligovy_prumer_asistence, 1))
+) %>%
+  kable("html", col.names = c("Statistika", "Hodnota")) %>%
+  kable_styling("striped", full_width = F) %>%
+  column_spec(1, bold = TRUE, color = "red") %>%
+  column_spec(2, color = "purple") %>%
+  row_spec(0, bold = TRUE, background = "#f7f7f7")
+
+
+```
+
+### Statistiky vybraného hráče a porovnání s průměry
+
+Čtenář si bude moci vybrat libovolného hráče, zobrazit jeho souhrnné
+průměrné statistiky a porovnat je s ligovými průměry.
+
+```{r ,message=FALSE, warning=FALSE}
+# UI
+ui <- fluidPage(
+  titlePanel("Statistiky NBA hráčů"),
+
+  fluidRow(
+    column(3,
+           uiOutput("hrac_ui"),
+           actionButton("reset", "Reset")
+    ),
+    column(9,
+           plotOutput("graf")
+    )
+  ),
+
+  hr(), br(),
+
+  fluidRow(
+    column(12,
+           tableOutput("statistiky")
+    )
+  )
+)
+
+# Server
+server <- function(input, output, session) {
+
+  # Výběr hráčů (všichni hráči bez filtru podle týmu)
+  output$hrac_ui <- renderUI({
+    selectInput("vyber_hrace", "Vyber hráče:",
+                choices = sort(unique(statistiky_hracu$jmeno_hrace)))
+  })
+
+  # Reset tlačítko
+  observeEvent(input$reset, {
+    output$hrac_ui <- renderUI({
+      selectInput("vyber_hrace", "Vyber hráče:",
+                  choices = sort(unique(statistiky_hracu$jmeno_hrace)),
+                  selected = NULL)
+    })
+  })
+
+  # Výstupní tabulka
+  output$statistiky <- renderTable({
+    req(input$vyber_hrace)
+    hrac_selected <- statistiky_hracu %>%
+      filter(jmeno_hrace == input$vyber_hrace)
+
+    hrac_selected %>%
+      transmute(
+        `Jméno hráče` = jmeno_hrace,
+        `Pozice` = pozice,
+        `Týmy` = tymy,
+        `Počet zápasů` = as.integer(pocet_zapasu),
+        `Počet zápasů v základu` = as.integer(pocet_zapasu_z5),
+        `Průměr bodů` = round(prumer_body_na_zapas, 1),
+        `Průměr doskoků` = round(prumer_doskoky_na_zapas, 1),
+        `Průměr asistencí` = round(prumer_asistence_na_zapas, 1),
+        `Průměr minut` = prumer_minut,
+        `Efektivita střelby` = efektivita_strelby
+      )
+  })
+
+  # Výstupní graf
+  output$graf <- renderPlot({
+    req(input$vyber_hrace)
+    data <- statistiky_hracu %>%
+      filter(jmeno_hrace == input$vyber_hrace)
+
+    df <- data.frame(
+      Statistika = c("Body", "Doskoky", "Asistence"),
+      Hodnota = c(data$prumer_body_na_zapas, data$prumer_doskoky_na_zapas, data$prumer_asistence_na_zapas)
+    )
+
+    ggplot(df, aes(x = Statistika, y = Hodnota, fill = Statistika)) +
+      geom_col(width = 0.5) +
+      geom_hline(yintercept = ligovy_prumer_body, linetype = "dashed", color = "green") + 
+      geom_hline(yintercept = ligovy_prumer_doskoky, linetype = "dashed", color = "blue") +
+      geom_hline(yintercept = ligovy_prumer_asistence, linetype = "dashed", color = "red") +
+      labs(title = paste("Základní statistiky:", data$jmeno_hrace), y = "Průměr na zápas") +
+      theme_minimal() +
+      theme(legend.position = "none")
+  })
+}
+
+# Spuštění aplikace
+shinyApp(ui = ui, server = server, options = list(height = 680))
+
+```
+
+```{r ,message=FALSE, warning=FALSE}
+end_time <- Sys.time()
+cas <- round(difftime(end_time, start_time, units = "secs"), 2)
+cat("⏱️ Celkový čas knitování:", cas, "sekund")
+```
