@@ -28,19 +28,15 @@ K dispozici jsou dvě varianty přístupu k datům:
 - [DatSysyProjekt.Rmd](./2-r-analysis/DatSysyProjekt.Rmd) — přímé SQL dotazy (dbGetQuery)
 - [DatSysyProjekt_dbplyr.Rmd](./2-r-analysis/DatSysyProjekt_dbplyr.Rmd) — alternativní přístup přes dbplyr, kde se SQL generuje automaticky z dplyr syntaxe a dotazy běží přímo na serveru
 
-Zobrazit statický náhled: [https://htmlpreview.github.io/?https://github.com/martinheger/sql-r-powerbi-nba-analytics/blob/main/2-r-analysis/DatSysyProjekt.html](https://htmlpreview.github.io/?https://github.com/martinheger/sql-r-powerbi-nba-analytics/blob/main/2-r-analysis/DatSysyProjekt.html)
+Zobrazit report: [https://htmlpreview.github.io/?https://github.com/martinheger/sql-r-powerbi-nba-analytics/blob/main/2-r-analysis/DatSysyProjekt_static.html](https://htmlpreview.github.io/?https://github.com/martinheger/sql-r-powerbi-nba-analytics/blob/main/2-r-analysis/DatSysyProjekt_static.html)
 
-Dokument využívá `runtime: shiny` pro interaktivní prvky. Statický náhled výše zobrazí obsah, ale interaktivní widgety vyžadují běžící R session s připojením na databázi — pro plnou funkčnost je nutné spustit lokálně. Skripty vyžadují vlastní připojení k MS SQL Server databázi.
+Report výše je statická verze bez interaktivního Shiny widgetu. Původní zdrojový kód ([DatSysyProjekt.Rmd](./2-r-analysis/DatSysyProjekt.Rmd)) obsahuje i interaktivní widget pro výběr hráče (`runtime: shiny`) — jeho spuštění vyžaduje běžící R session s připojením na databázi.
 
 ## 3. Power BI — dashboard
 
-Transformace relačního modelu do analytického schématu vhodného pro Power BI, s řešením cyklických závislostí při modelování sportovních utkání. Dokumentace přístupu v [docs/power_bi_nba_dokumentace.pdf](./docs/power_bi_nba_dokumentace.pdf) a [docs/project_plan_powerbi.pdf](./docs/project_plan_powerbi.pdf).
+Transformace relačního modelu do analytického schématu vhodného pro Power BI, s řešením cyklických závislostí při modelování sportovních utkání. Dokumentace přístupu v [docs/power_bi_nba_dokumentace.pdf](./docs/power_bi_nba_dokumentace.pdf).
 
-```
-3-power-bi/
-├── nba_powerbi_dashboard.pbix       # hlavní verze dashboardu
-└── nba_powerbi_dashboard_alt.pbix   # alternativní verze (stejná data, jiné rozvržení reportu)
-```
+Dashboard: [3-power-bi/nba_powerbi_dashboard.pbix](./3-power-bi/nba_powerbi_dashboard.pbix)
 
 ## Struktura repa
 
