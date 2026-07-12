@@ -1,62 +1,64 @@
-# End-to-end analýza dat NBA: SQL → R → Power BI
+# End-to-End NBA Data Analytics: SQL → R → Power BI
 
-Kompletní datový pipeline od relační databáze až po interaktivní dashboard: vlastní relační databázový model v MS SQL Serveru, zpracování a analýza dat v R, a finální vizualizace v Power BI.
+**[English](README.md) | [Česky](README_cz.md)**
 
-## Přehled pipeline
+A complete data pipeline from a relational database to an interactive dashboard: custom relational database model in MS SQL Server, data processing and analysis in R, and final visualization in Power BI.
 
+## Pipeline Overview
+
+```text
+1. SQL (MS SQL Server) → 2. R (processing & analysis) → 3. Power BI (dashboard)
 ```
-1. SQL (MS SQL Server) → 2. R (zpracování a analýza) → 3. Power BI (dashboard)
-```
 
-Databáze obsahuje data ze sezóny 2023/24 NBA (National Basketball Association) — výkony hráčů, týmy, draft, divize a konference, ve vlastním relačním modelu (3. normální forma).
+The database contains data from the 2023/24 NBA season — player performances, teams, drafts, divisions, and conferences, structured in a custom relational model (3rd Normal Form).
 
-## 1. SQL — databázový model
+## 1. SQL — Database Model
 
-Vlastní relační databáze (mahe_projekt_NBA) s tabulkami pro hráče, týmy, sezónní statistiky, draft, divize a konference. Návrh a příprava datového modelu zdokumentována v [docs/521087-Heger_Martin-M8DBR_projekt___Heger.pdf](./docs/521087-Heger_Martin-M8DBR_projekt___Heger.pdf).
+Custom relational database (`mahe_projekt_NBA`) with tables for players, teams, seasonal stats, drafts, divisions, and conferences. Design and preparation of the data model are documented in [docs/521087-Heger_Martin-M8DBR_projekt___Heger.pdf](./docs/521087-Heger_Martin-M8DBR_projekt___Heger.pdf).
 
-## 2. R — připojení a analýza
+## 2. R — Connection and Analysis
 
-R skript se připojuje přímo na MS SQL Server (přes DBI/odbc) a načítá data pomocí SQL dotazů:
+The R script connects directly to MS SQL Server (via DBI/odbc) and loads data using SQL queries:
 
 ```r
 nba_zapasy <- dbGetQuery(con, "SELECT * FROM nba_zapasy")
 nba_hraci  <- dbGetQuery(con, "SELECT * FROM nba_hraci")
 ```
 
-K dispozici jsou dvě varianty přístupu k datům:
+Two data access approaches are available:
 
-- [DatSysyProjekt.Rmd](./2-r-analysis/DatSysyProjekt.Rmd) — přímé SQL dotazy (dbGetQuery)
-- [DatSysyProjekt_dbplyr.Rmd](./2-r-analysis/DatSysyProjekt_dbplyr.Rmd) — alternativní přístup přes dbplyr, kde se SQL generuje automaticky z dplyr syntaxe a dotazy běží přímo na serveru
+- [DatSysyProjekt.Rmd](./2-r-analysis/DatSysyProjekt.Rmd) — direct SQL queries (`dbGetQuery`)
+- [DatSysyProjekt_dbplyr.Rmd](./2-r-analysis/DatSysyProjekt_dbplyr.Rmd) — alternative approach via `dbplyr`, where SQL is generated automatically from `dplyr` syntax and queries run directly on the server
 
-Zobrazit report: [https://htmlpreview.github.io/?https://github.com/martinheger/sql-r-powerbi-nba-analytics/blob/main/2-r-analysis/DatSysyProjekt_static.html](https://htmlpreview.github.io/?https://github.com/martinheger/sql-r-powerbi-nba-analytics/blob/main/2-r-analysis/DatSysyProjekt_static.html)
+View the report: [https://htmlpreview.github.io/?https://github.com/martinheger/sql-r-powerbi-nba-analytics/blob/main/2-r-analysis/DatSysyProjekt_static.html](https://htmlpreview.github.io/?https://github.com/martinheger/sql-r-powerbi-nba-analytics/blob/main/2-r-analysis/DatSysyProjekt_static.html)
 
-Report výše je statická verze bez interaktivního Shiny widgetu. Původní zdrojový kód ([DatSysyProjekt.Rmd](./2-r-analysis/DatSysyProjekt.Rmd)) obsahuje i interaktivní widget pro výběr hráče (`runtime: shiny`) — jeho spuštění vyžaduje běžící R session s připojením na databázi.
+The report above is a static version without the interactive Shiny widget. The original source code ([DatSysyProjekt.Rmd](./2-r-analysis/DatSysyProjekt.Rmd)) includes an interactive widget for player selection (`runtime: shiny`) — running it requires an active R session with a database connection.
 
-## 3. Power BI — dashboard
+## 3. Power BI — Dashboard
 
-Transformace relačního modelu do analytického schématu vhodného pro Power BI, s řešením cyklických závislostí při modelování sportovních utkání. Dokumentace přístupu v [docs/power_bi_nba_dokumentace.pdf](./docs/power_bi_nba_dokumentace.pdf).
+Transformation of the relational model into an analytical schema suitable for Power BI, including solving cyclic dependencies when modeling sports matches. The approach is documented in [docs/power_bi_nba_dokumentace.pdf](./docs/power_bi_nba_dokumentace.pdf).
 
 Dashboard: [3-power-bi/nba_powerbi_dashboard.pbix](./3-power-bi/nba_powerbi_dashboard.pbix)
 
-## Struktura repa
+## Repo Structure
 
+```text
+├── 2-r-analysis/   # R scripts for DB connection and analysis (direct SQL & dbplyr)
+├── 3-power-bi/     # Power BI dashboards (.pbix)
+└── docs/           # data model and Power BI implementation documentation
 ```
-├── 2-r-analysis/   # R skripty pro připojení k DB a analýzu (2 přístupy: přímé SQL a dbplyr)
-├── 3-power-bi/     # Power BI dashboardy (.pbix)
-└── docs/           # dokumentace datového modelu a Power BI implementace
-```
 
-## Tech stack
+## Tech Stack
 
-MS SQL Server, R (DBI, odbc, dbplyr), Power BI (DAX), relační databázové modelování
+MS SQL Server, R (DBI, odbc, dbplyr), Power BI (DAX), Relational Database Modeling
 
-## Autorství a kontext
+## Authorship and Context
 
-Projekt vznikl na Masarykově univerzitě ve dvou navazujících kurzech:
+This project was developed across two consecutive courses at Masaryk University:
 
-- SQL a R část — kurz M8DBR Databázové systémy a R v datové vědě, Přírodovědecká fakulta (jaro 2025). Individuální práce.
-- Power BI část — kurz MPM_DPBI Zpracování dat s PowerBI, Ekonomicko-správní fakulta (podzim 2025).
+- SQL and R part — course M8DBR Database Systems and R in Data Science, Faculty of Science (Spring 2025). Individual work.
+- Power BI part — course MPM_DPBI Data Processing with Power BI, Faculty of Economics and Administration (Autumn 2025).
 
-## Licence
+## License
 
-MIT — viz [LICENSE](./LICENSE)
+MIT — see [LICENSE](./LICENSE)
